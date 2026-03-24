@@ -1,0 +1,1932 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SCUTIGERA — Environmental Monitor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0f14;
+    --surface: #111820;
+    --surface2: #161f2a;
+    --border: #1e2d3d;
+    --accent-green: #00e5a0;
+    --accent-blue: #0099ff;
+    --accent-amber: #ffb800;
+    --accent-red: #ff4d6d;
+    --accent-purple: #a855f7;
+    --text: #e8f0f7;
+    --text-muted: #5a7a94;
+    --text-dim: #8aa5be;
+    --font-mono: 'Space Mono', monospace;
+    --font-display: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-display);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Scanline overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.04) 2px,
+      rgba(0,0,0,0.04) 4px
+    );
+    pointer-events: none;
+    z-index: 1000;
+  }
+
+  /* Grid bg */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,229,160,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,229,160,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* NAV */
+  nav {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(10,15,20,0.92);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 2rem;
+    height: 56px;
+  }
+
+  .nav-brand {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    letter-spacing: 0.2em;
+    color: var(--accent-green);
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+
+  .nav-brand::before {
+    content: '▶';
+    font-size: 0.6rem;
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  .nav-tabs {
+    display: flex;
+    gap: 0;
+    list-style: none;
+  }
+
+  .nav-tabs li button {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    padding: 0 1rem;
+    height: 56px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+    text-transform: uppercase;
+  }
+
+  .nav-tabs li button:hover {
+    color: var(--text-dim);
+  }
+
+  .nav-tabs li button.active {
+    color: var(--accent-green);
+    border-bottom-color: var(--accent-green);
+  }
+
+  .nav-location {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    letter-spacing: 0.08em;
+  }
+
+  /* MAIN */
+  main {
+    position: relative;
+    z-index: 1;
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 2rem;
+  }
+
+  /* PAGE VIEWS */
+  .page { display: none; }
+  .page.active { display: block; }
+
+  /* DASHBOARD */
+  .dashboard-header {
+    margin-bottom: 2.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+  }
+
+  .dashboard-title {
+    font-size: 2.5rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1;
+  }
+
+  .dashboard-subtitle {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    letter-spacing: 0.15em;
+    margin-top: 0.5rem;
+    text-transform: uppercase;
+  }
+
+  .last-updated {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    text-align: right;
+  }
+
+  .last-updated span {
+    color: var(--accent-green);
+    display: block;
+    font-size: 0.8rem;
+  }
+
+  /* SECTION HEADERS */
+  .section-label {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+  }
+
+  .section-label::before {
+    content: '';
+    display: block;
+    width: 20px;
+    height: 1px;
+    background: var(--text-muted);
+  }
+
+  /* METRIC CARDS */
+  .metrics-grid {
+    display: grid;
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    margin-bottom: 2rem;
+  }
+
+  .climate-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .soil-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .water-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .battery-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .metric-card {
+    background: var(--surface);
+    padding: 1.5rem;
+    cursor: pointer;
+    transition: background 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .metric-card::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--card-accent, var(--accent-green));
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 0.3s ease;
+  }
+
+  .metric-card:hover {
+    background: var(--surface2);
+  }
+
+  .metric-card:hover::after {
+    transform: scaleX(1);
+  }
+
+  .metric-label {
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 0.8rem;
+  }
+
+  .metric-value {
+    font-size: 2.2rem;
+    font-weight: 600;
+    line-height: 1;
+    color: var(--card-accent, var(--accent-green));
+    margin-bottom: 0.3rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .metric-unit {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    margin-bottom: 1rem;
+  }
+
+  .metric-bar-track {
+    height: 3px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .metric-bar-fill {
+    height: 100%;
+    background: var(--card-accent, var(--accent-green));
+    border-radius: 2px;
+    transition: width 0.8s ease;
+    opacity: 0.7;
+  }
+
+  .metric-range {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 0.3rem;
+    font-family: var(--font-mono);
+    font-size: 0.55rem;
+    color: var(--text-muted);
+    overflow: hidden;
+    max-height: 0;
+    opacity: 0;
+    transition: max-height 0.25s ease, opacity 0.25s ease, margin-top 0.25s ease;
+    margin-top: 0;
+  }
+
+  body.show-range .metric-range {
+    max-height: 2rem;
+    opacity: 1;
+    margin-top: 0.3rem;
+  }
+
+  .range-toggle-btn {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    letter-spacing: 0.1em;
+    padding: 0.3rem 0.75rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+    touch-action: manipulation;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .range-toggle-btn:hover {
+    border-color: var(--text-dim);
+    color: var(--text);
+  }
+
+  .range-toggle-btn.active {
+    border-color: var(--accent-green);
+    color: var(--accent-green);
+    background: rgba(0,229,160,0.06);
+  }
+
+  .metric-nav-hint {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    font-family: var(--font-mono);
+    font-size: 0.55rem;
+    color: var(--text-muted);
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .metric-card:hover .metric-nav-hint {
+    opacity: 1;
+  }
+
+  /* DETAIL PAGE */
+  .detail-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 2.5rem;
+  }
+
+  .back-btn {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    padding: 0.5rem 1rem;
+    cursor: pointer;
+    letter-spacing: 0.1em;
+    transition: all 0.2s;
+  }
+
+  .back-btn:hover {
+    border-color: var(--text-dim);
+    color: var(--text);
+  }
+
+  .detail-title {
+    font-size: 1.8rem;
+    font-weight: 800;
+  }
+
+  .detail-accent {
+    color: var(--card-accent, var(--accent-green));
+  }
+
+  /* STATS ROW */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    margin-bottom: 2rem;
+  }
+
+  .stat-box {
+    background: var(--surface);
+    padding: 1.2rem 1.5rem;
+  }
+
+  .stat-name {
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 0.4rem;
+  }
+
+  .stat-value {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--card-accent, var(--accent-green));
+  }
+
+  /* CHART */
+  .chart-container {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+  }
+
+  .chart-area {
+    width: 100%;
+    height: 200px;
+    position: relative;
+    margin-top: 1rem;
+  }
+
+  svg.line-chart {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+
+  /* TABLE */
+  .table-container {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    overflow: auto;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+  }
+
+  thead {
+    background: var(--surface2);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+
+  th {
+    padding: 0.8rem 1.2rem;
+    text-align: left;
+    font-size: 0.6rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+
+  td {
+    padding: 0.75rem 1.2rem;
+    border-bottom: 1px solid rgba(30,45,61,0.5);
+    color: var(--text-dim);
+    white-space: nowrap;
+  }
+
+  tr:last-child td {
+    border-bottom: none;
+  }
+
+  tr:hover td {
+    background: var(--surface2);
+    color: var(--text);
+  }
+
+  tr.latest td {
+    color: var(--text);
+  }
+
+  tr.latest td:first-child::after {
+    content: ' ←';
+    font-size: 0.55rem;
+    color: var(--accent-green);
+    margin-left: 0.3rem;
+  }
+
+  @media (min-width: 601px) {
+    tr.latest td:first-child::after {
+      content: ' ←latest';
+    }
+  }
+
+  .td-value {
+    color: var(--card-accent, var(--text));
+    font-weight: 700;
+  }
+
+  /* RESPONSIVE */
+  @media (max-width: 900px) {
+    .climate-grid, .water-grid, .battery-grid { grid-template-columns: 1fr 1fr; }
+    .soil-grid { grid-template-columns: 1fr 1fr; }
+    .stats-row { grid-template-columns: 1fr 1fr; }
+    .dashboard-title { font-size: 1.8rem; }
+    .metric-value { font-size: 1.8rem; }
+  }
+
+  @media (max-width: 600px) {
+    /* Nav — scrollable tab strip */
+    nav {
+      padding: 0 0.75rem;
+      height: auto;
+      flex-wrap: wrap;
+      gap: 0;
+    }
+
+    .nav-brand {
+      height: 48px;
+      display: flex;
+      align-items: center;
+    }
+
+    .nav-tabs {
+      order: 3;
+      width: 100%;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+      border-top: 1px solid var(--border);
+    }
+
+    .nav-tabs::-webkit-scrollbar { display: none; }
+
+    .nav-tabs li button {
+      height: 40px;
+      padding: 0 0.85rem;
+      font-size: 0.62rem;
+      white-space: nowrap;
+    }
+
+    .nav-tabs li button.active {
+      border-bottom-width: 2px;
+    }
+
+    /* Nav right side */
+    nav > div:last-child {
+      height: 48px;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+
+    .nav-location { display: none; }
+
+    /* Main padding */
+    main { padding: 0.875rem; }
+
+    /* Dashboard header — stack vertically */
+    .dashboard-header {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .dashboard-title { font-size: 1.6rem; }
+
+    .last-updated {
+      text-align: left;
+      font-size: 0.6rem;
+    }
+
+    .last-updated span { font-size: 0.75rem; display: inline; margin-left: 0.3rem; }
+
+    /* Section labels */
+    .section-label { margin-bottom: 0.6rem; }
+
+    /* Metric grids — 2 col on mobile (not 1) for climate/water, 2 for soil */
+    .climate-grid, .water-grid, .battery-grid { grid-template-columns: 1fr 1fr; }
+    .soil-grid { grid-template-columns: 1fr 1fr; }
+
+    .metrics-grid { margin-bottom: 1.25rem; }
+
+    .metric-card { padding: 1rem; }
+    .metric-value { font-size: 1.5rem; }
+    .metric-label { font-size: 0.55rem; margin-bottom: 0.5rem; }
+    .metric-unit { font-size: 0.6rem; margin-bottom: 0.6rem; }
+    .metric-range { font-size: 0.5rem; }
+
+    /* Stats row — 2 col */
+    .stats-row { grid-template-columns: 1fr 1fr; }
+    .stat-box { padding: 0.9rem 1rem; }
+    .stat-value { font-size: 1.2rem; }
+
+    /* Chart buttons — wrap tightly */
+    .chart-container { padding: 1rem; margin-bottom: 1.25rem; }
+    .chart-container > div[id$="ChartBtns"] {
+      gap: 0.4rem !important;
+    }
+
+    /* Detail header */
+    .detail-header { margin-bottom: 1.5rem; gap: 0.75rem; }
+    .detail-title { font-size: 1.4rem; }
+    .back-btn { padding: 0.4rem 0.75rem; font-size: 0.62rem; }
+
+    /* Table — horizontal scroll */
+    .table-container { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    th { padding: 0.65rem 0.9rem; font-size: 0.55rem; }
+    td { padding: 0.6rem 0.9rem; font-size: 0.7rem; }
+
+    /* Override page */
+    .override-header { margin-bottom: 1.5rem; }
+    .override-title { font-size: 1.8rem; }
+    .override-subtitle { font-size: 0.62rem; }
+
+    .override-master {
+      padding: 1rem 1.1rem;
+      margin-bottom: 1.25rem;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+    }
+
+    .tracks-layout { grid-template-columns: 1fr; margin-bottom: 1.25rem; }
+
+    .track-panel { padding: 1.25rem 1rem; gap: 1rem; }
+
+    /* Bigger tap targets for track buttons */
+    .track-btn {
+      padding: 1.1rem;
+      font-size: 0.7rem;
+      min-height: 52px;
+    }
+
+    .track-indicator { width: 64px; height: 64px; }
+    .track-indicator svg { width: 24px; height: 24px; }
+
+    /* Override readout — stack */
+    .override-readout {
+      flex-direction: column;
+      padding: 1rem;
+      gap: 0.75rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .readout-block { min-width: unset; }
+    .readout-value { font-size: 0.75rem; }
+  }
+
+  /* Extra small — single col metric cards */
+  @media (max-width: 380px) {
+    .climate-grid, .water-grid, .soil-grid, .battery-grid {
+      grid-template-columns: 1fr;
+    }
+    .metric-value { font-size: 1.4rem; }
+  }
+
+  /* LANG TOGGLE */
+  .lang-toggle {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.12em;
+    padding: 0.3rem 0.75rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    white-space: nowrap;
+    touch-action: manipulation;
+  }
+
+  .lang-toggle:hover {
+    border-color: var(--accent-green);
+    color: var(--accent-green);
+  }
+
+  .lang-toggle .lang-active {
+    color: var(--accent-green);
+  }
+
+  /* ============================================================
+     OVERRIDE PAGE
+  ============================================================ */
+
+  .override-header {
+    margin-bottom: 2.5rem;
+  }
+
+  .override-title {
+    font-size: 2.5rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1;
+  }
+
+  .override-subtitle {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    letter-spacing: 0.15em;
+    margin-top: 0.5rem;
+    text-transform: uppercase;
+  }
+
+  /* Master toggle */
+  .override-master {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 1.2rem 1.8rem;
+    margin-bottom: 2rem;
+  }
+
+  .override-master-label {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+
+  .override-master-label span {
+    display: block;
+    font-size: 1rem;
+    font-weight: 800;
+    font-family: var(--font-display);
+    margin-top: 0.2rem;
+    color: var(--text);
+  }
+
+  .toggle-switch {
+    position: relative;
+    width: 56px;
+    height: 28px;
+    flex-shrink: 0;
+  }
+
+  .toggle-switch input {
+    opacity: 0;
+    width: 0; height: 0;
+    position: absolute;
+  }
+
+  .toggle-track {
+    position: absolute;
+    inset: 0;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: all 0.25s;
+    touch-action: manipulation;
+  }
+
+  .toggle-track::after {
+    content: '';
+    position: absolute;
+    top: 3px; left: 3px;
+    width: 20px; height: 20px;
+    background: var(--text-muted);
+    transition: all 0.25s;
+  }
+
+  .toggle-switch input:checked + .toggle-track {
+    background: rgba(255,184,0,0.15);
+    border-color: var(--accent-amber);
+  }
+
+  .toggle-switch input:checked + .toggle-track::after {
+    transform: translateX(28px);
+    background: var(--accent-amber);
+  }
+
+  .override-status-badge {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.15em;
+    padding: 0.25rem 0.8rem;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    text-transform: uppercase;
+    transition: all 0.3s;
+  }
+
+  .override-status-badge.active {
+    border-color: var(--accent-amber);
+    color: var(--accent-amber);
+    background: rgba(255,184,0,0.08);
+    box-shadow: 0 0 12px rgba(255,184,0,0.15);
+  }
+
+  /* Track controls layout */
+  .tracks-layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    margin-bottom: 2rem;
+  }
+
+  .track-panel {
+    background: var(--surface);
+    padding: 2rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.5rem;
+    transition: background 0.2s;
+  }
+
+  .track-panel.disabled {
+    opacity: 0.35;
+    pointer-events: none;
+  }
+
+  .track-name {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    align-self: flex-start;
+  }
+
+  /* Track direction indicator */
+  .track-indicator {
+    width: 80px;
+    height: 80px;
+    border: 2px solid var(--border);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    transition: border-color 0.2s;
+  }
+
+  .track-indicator.fwd {
+    border-color: var(--accent-green);
+    box-shadow: 0 0 20px rgba(0,229,160,0.2);
+  }
+
+  .track-indicator.rev {
+    border-color: var(--accent-red);
+    box-shadow: 0 0 20px rgba(255,77,109,0.2);
+  }
+
+  .track-indicator svg {
+    width: 32px;
+    height: 32px;
+    transition: transform 0.3s, opacity 0.3s;
+    opacity: 0.3;
+  }
+
+  .track-indicator.fwd svg { opacity: 1; color: var(--accent-green); }
+  .track-indicator.rev svg { opacity: 1; color: var(--accent-red); transform: rotate(180deg); }
+
+  .track-dir-label {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.15em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    height: 1rem;
+    text-align: center;
+    transition: color 0.2s;
+  }
+
+  .track-dir-label.fwd { color: var(--accent-green); }
+  .track-dir-label.rev { color: var(--accent-red); }
+
+  /* Up/Down buttons */
+  .track-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    max-width: 200px;
+  }
+
+  .track-btn {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 0.9rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    transition: all 0.15s;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .track-btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: currentColor;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+
+  .track-btn:active::before,
+  .track-btn.pressed::before {
+    opacity: 0.1;
+  }
+
+  .track-btn.up-btn:hover,
+  .track-btn.up-btn.pressed {
+    border-color: var(--accent-green);
+    color: var(--accent-green);
+  }
+
+  .track-btn.down-btn:hover,
+  .track-btn.down-btn.pressed {
+    border-color: var(--accent-red);
+    color: var(--accent-red);
+  }
+
+  .track-btn svg {
+    width: 16px; height: 16px;
+  }
+
+  /* State readout */
+  .override-readout {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 1.2rem 1.8rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-bottom: 2rem;
+  }
+
+  .readout-label {
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    letter-spacing: 0.15em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    margin-bottom: 0.3rem;
+  }
+
+  .readout-value {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    color: var(--accent-amber);
+    word-break: break-all;
+  }
+
+  .readout-block {
+    flex: 1;
+    min-width: 180px;
+  }
+
+  .poll-dot {
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    margin-right: 0.5rem;
+    vertical-align: middle;
+    transition: background 0.2s;
+  }
+
+  .poll-dot.live { background: var(--accent-green); animation: pollblink 1s ease infinite; }
+
+  @keyframes pollblink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  /* FADE IN */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .page.active > * {
+    animation: fadeUp 0.35s ease both;
+  }
+
+  .page.active > *:nth-child(1) { animation-delay: 0s; }
+  .page.active > *:nth-child(2) { animation-delay: 0.06s; }
+  .page.active > *:nth-child(3) { animation-delay: 0.12s; }
+  .page.active > *:nth-child(4) { animation-delay: 0.18s; }
+  .page.active > *:nth-child(5) { animation-delay: 0.24s; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-brand">SCUTIGERA</div>
+  <ul class="nav-tabs" id="navTabs">
+    <li><button class="active" onclick="showPage('dashboard')" data-i18n="nav.dashboard">Dashboard</button></li>
+    <li><button onclick="showPage('climate')" data-i18n="nav.climate">Climate</button></li>
+    <li><button onclick="showPage('soil')" data-i18n="nav.soil">Soil</button></li>
+    <li><button onclick="showPage('water')" data-i18n="nav.water">Water</button></li>
+    <li><button onclick="showPage('override')" style="color:var(--accent-amber)" data-i18n="nav.override">Emergency Steering</button></li>
+  </ul>
+  <div style="display:flex;align-items:center;gap:1rem">
+    <button class="lang-toggle" id="langToggleBtn" onclick="toggleLang()">
+      <span id="langLabel">FIL <span class="lang-active">●</span> EN</span>
+    </button>
+    <div class="nav-location" id="navLocation">Loading...</div>
+  </div>
+</nav>
+
+<main>
+  <!-- DASHBOARD -->
+  <div class="page active" id="page-dashboard">
+    <div class="dashboard-header">
+      <div>
+        <div class="dashboard-title" data-i18n="dash.title">Field Monitor</div>
+        <div class="dashboard-subtitle" data-i18n="dash.subtitle">Environmental Sensor Dashboard</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:0.6rem">
+        <div class="last-updated">
+          <span data-i18n="dash.latestReading">Pinakabagong datos</span><br>
+          <span id="latestDate">—</span>
+        </div>
+        <button class="range-toggle-btn" id="rangeToggleBtn" onclick="toggleRange()">
+          <span id="rangeToggleIcon">○</span>
+          <span data-i18n="dash.showRange" id="rangeToggleLabel">Min/Max</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="section-label" data-i18n="nav.climate">Panahon</div>
+    <div class="metrics-grid climate-grid" id="dashClimate"></div>
+
+    <div class="section-label" data-i18n="nav.soil">Lupa</div>
+    <div class="metrics-grid soil-grid" id="dashSoil"></div>
+
+    <div class="section-label" data-i18n="nav.water">Tubig</div>
+    <div class="metrics-grid water-grid" id="dashWater"></div>
+
+    <div class="section-label" data-i18n="dash.system">Sistema</div>
+    <div class="metrics-grid battery-grid" id="dashBattery"></div>
+  </div>
+
+  <div class="page" id="page-climate">
+    <div class="detail-header">
+      <button class="back-btn" onclick="showPage('dashboard')" data-i18n="detail.back">← Bumalik</button>
+      <div class="detail-title"><span class="detail-accent" data-i18n="nav.climate">Panahon</span> <span data-i18n="detail.history">Kasaysayan</span></div>
+    </div>
+    <div class="stats-row" id="climateStats"></div>
+    <div class="chart-container">
+      <div class="section-label" data-i18n="detail.trend">Kalakaran</div>
+      <div style="display:flex;gap:1rem;margin-bottom:0.5rem;flex-wrap:wrap;" id="climateChartBtns"></div>
+      <div class="chart-area"><svg class="line-chart" id="climateChart"></svg></div>
+    </div>
+    <div class="table-container">
+      <table id="climateTable"></table>
+    </div>
+  </div>
+
+  <!-- SOIL DETAIL -->
+  <div class="page" id="page-soil">
+    <div class="detail-header">
+      <button class="back-btn" onclick="showPage('dashboard')" data-i18n="detail.back">← Bumalik</button>
+      <div class="detail-title"><span class="detail-accent" data-i18n="nav.soil">Lupa</span> <span data-i18n="detail.history">Kasaysayan</span></div>
+    </div>
+    <div class="stats-row" id="soilStats"></div>
+    <div class="chart-container">
+      <div class="section-label" data-i18n="detail.trend">Kalakaran</div>
+      <div style="display:flex;gap:1rem;margin-bottom:0.5rem;flex-wrap:wrap;" id="soilChartBtns"></div>
+      <div class="chart-area"><svg class="line-chart" id="soilChart"></svg></div>
+    </div>
+    <div class="table-container">
+      <table id="soilTable"></table>
+    </div>
+  </div>
+
+  <!-- WATER DETAIL -->
+  <div class="page" id="page-water">
+    <div class="detail-header">
+      <button class="back-btn" onclick="showPage('dashboard')" data-i18n="detail.back">← Bumalik</button>
+      <div class="detail-title"><span class="detail-accent" data-i18n="nav.water">Tubig</span> <span data-i18n="detail.history">Kasaysayan</span></div>
+    </div>
+    <div class="stats-row" id="waterStats"></div>
+    <div class="chart-container">
+      <div class="section-label" data-i18n="detail.trend">Kalakaran</div>
+      <div style="display:flex;gap:1rem;margin-bottom:0.5rem;flex-wrap:wrap;" id="waterChartBtns"></div>
+      <div class="chart-area"><svg class="line-chart" id="waterChart"></svg></div>
+    </div>
+    <div class="table-container">
+      <table id="waterTable"></table>
+    </div>
+  </div>
+  <!-- OVERRIDE -->
+  <div class="page" id="page-override">
+
+    <div class="override-header">
+      <div class="override-title"><span style="color:var(--accent-amber)" data-i18n="nav.override">Emergency Steering</span></div>
+      <div class="override-subtitle" data-i18n="override.subtitle">Manual track control — left &amp; right motors</div>
+    </div>
+
+    <!-- Master enable -->
+    <div class="override-master">
+      <div>
+        <div class="override-master-label">
+          <span data-i18n="override.mode">Override Mode</span>
+          <span id="overrideMasterLabel" data-i18n="override.disabled">Naka-hinto</span>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:1.2rem">
+        <div class="override-status-badge" id="overrideBadge" data-i18n="override.standby">STANDBY</div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="overrideMasterToggle" onchange="onMasterToggle()">
+          <div class="toggle-track"></div>
+        </label>
+      </div>
+    </div>
+
+    <!-- Track controls -->
+    <div class="tracks-layout" id="tracksLayout">
+
+      <!-- LEFT -->
+      <div class="track-panel disabled" id="trackLeft">
+        <div class="track-name">◀ <span data-i18n="override.leftTrack">Kaliwang Track</span></div>
+        <div class="track-indicator" id="leftIndicator">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="18 15 12 9 6 15"></polyline>
+          </svg>
+        </div>
+        <div class="track-dir-label" id="leftDirLabel" data-i18n="override.idle">IDLE</div>
+        <div class="track-buttons">
+          <button class="track-btn up-btn"
+            id="leftUp"
+            onmousedown="pressBtn('left','fwd',true)"
+            onmouseup="pressBtn('left','fwd',false)"
+            onmouseleave="pressBtn('left','fwd',false)"
+            ontouchstart="pressBtn('left','fwd',true)"
+            ontouchend="pressBtn('left','fwd',false)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg>
+            <span data-i18n="override.forward">Pasulong</span>
+          </button>
+          <button class="track-btn down-btn"
+            id="leftDown"
+            onmousedown="pressBtn('left','rev',true)"
+            onmouseup="pressBtn('left','rev',false)"
+            onmouseleave="pressBtn('left','rev',false)"
+            ontouchstart="pressBtn('left','rev',true)"
+            ontouchend="pressBtn('left','rev',false)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+            <span data-i18n="override.backward">Paatras</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- RIGHT -->
+      <div class="track-panel disabled" id="trackRight">
+        <div class="track-name"><span data-i18n="override.rightTrack">Kanang Track</span> ▶</div>
+        <div class="track-indicator" id="rightIndicator">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="18 15 12 9 6 15"></polyline>
+          </svg>
+        </div>
+        <div class="track-dir-label" id="rightDirLabel" data-i18n="override.idle">IDLE</div>
+        <div class="track-buttons">
+          <button class="track-btn up-btn"
+            id="rightUp"
+            onmousedown="pressBtn('right','fwd',true)"
+            onmouseup="pressBtn('right','fwd',false)"
+            onmouseleave="pressBtn('right','fwd',false)"
+            ontouchstart="pressBtn('right','fwd',true)"
+            ontouchend="pressBtn('right','fwd',false)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg>
+            <span data-i18n="override.forward">Pasulong</span>
+          </button>
+          <button class="track-btn down-btn"
+            id="rightDown"
+            onmousedown="pressBtn('right','rev',true)"
+            onmouseup="pressBtn('right','rev',false)"
+            onmouseleave="pressBtn('right','rev',false)"
+            ontouchstart="pressBtn('right','rev',true)"
+            ontouchend="pressBtn('right','rev',false)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+            <span data-i18n="override.backward">Paatras</span>
+          </button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- State readout (what MCU would poll) -->
+    <div class="override-readout">
+      <div class="readout-block">
+        <div class="readout-label"><span class="poll-dot" id="pollDot"></span><span data-i18n="override.endpoint">Endpoint</span></div>
+        <div class="readout-value">GET /override</div>
+      </div>
+      <div class="readout-block">
+        <div class="readout-label" data-i18n="override.payload">Kasalukuyang Datos</div>
+        <div class="readout-value" id="overridePayload">—</div>
+      </div>
+      <div class="readout-block">
+        <div class="readout-label" data-i18n="override.lastUpdated">Huling Na-update</div>
+        <div class="readout-value" id="overrideTimestamp">—</div>
+      </div>
+    </div>
+
+  </div>
+
+</main>
+
+<script>
+// ============================================================
+// I18N
+// ============================================================
+const LANG = {
+  fil: {
+    'nav.dashboard':   'Dashboard',
+    'nav.climate':     'Panahon',
+    'nav.soil':        'Lupa',
+    'nav.water':       'Tubig',
+    'nav.override':    'Emergency Steering',
+    'dash.title':      'Monitor ng Bukid',
+    'dash.subtitle':   'Dashboard ng Pangkalikasang Sensor',
+    'dash.latestReading': 'Pinakabagong datos',
+    'dash.showRange':  'Min/Max',
+    'dash.system':     'Sistema',
+    'battery.health':  'Kalusugan ng Baterya',
+    'battery.voltage': 'Boltahe',
+    'battery.status':  'Katayuan',
+    'detail.back':     '← Bumalik',
+    'detail.history':  'Kasaysayan',
+    'detail.trend':    'Kalakaran',
+    'stat.latest':     'Pinakabago',
+    'stat.average':    'Karaniwan',
+    'stat.minimum':    'Pinakamababa',
+    'stat.maximum':    'Pinakamataas',
+    'table.date':      'Petsa',
+    'override.title':  'Emergency Steering',
+    'override.subtitle': 'Manu-manong kontrol — kaliwa at kanang motor',
+    'override.mode':   'Emergency Steering Mode',
+    'override.disabled': 'Naka-hinto',
+    'override.active': 'AKTIBO',
+    'override.standby': 'STANDBY',
+    'override.overrideActive': 'EMERGENCY AKTIBO',
+    'override.leftTrack':  'Kaliwang Track',
+    'override.rightTrack': 'Kanang Track',
+    'override.idle':    'WALANG GALAW',
+    'override.forward': 'Pasulong',
+    'override.backward':'Paatras',
+    'override.endpoint':'Endpoint',
+    'override.payload': 'Kasalukuyang Datos',
+    'override.lastUpdated': 'Huling Na-update',
+    // Field labels
+    'field.temperature': 'Temperatura',
+    'field.humidity':    'Halumigmig',
+    'field.rainfall':    'Ulan',
+    'field.N':           'Nitroheno',
+    'field.P':           'Posporo',
+    'field.K':           'Potasyo',
+    'field.soilTemp':    'Temp. ng Lupa',
+    'field.moisture':    'Kahalumigmigan',
+    'field.EC':          'EC',
+    'field.pH':          'pH',
+    'field.waterPH':     'pH ng Tubig',
+    'field.turbidity':   'Kalabuan',
+    'field.waterTemp':   'Temp. ng Tubig',
+  },
+  en: {
+    'nav.dashboard':   'Dashboard',
+    'nav.climate':     'Climate',
+    'nav.soil':        'Soil',
+    'nav.water':       'Water',
+    'nav.override':    'Emergency Steering',
+    'dash.title':      'Field Monitor',
+    'dash.subtitle':   'Environmental Sensor Dashboard',
+    'dash.latestReading': 'Latest reading',
+    'dash.showRange':  'Min/Max',
+    'dash.system':     'System',
+    'battery.health':  'Battery Health',
+    'battery.voltage': 'Voltage',
+    'battery.status':  'Status',
+    'detail.back':     '← Back',
+    'detail.history':  'History',
+    'detail.trend':    'Trend',
+    'stat.latest':     'Latest',
+    'stat.average':    'Average',
+    'stat.minimum':    'Minimum',
+    'stat.maximum':    'Maximum',
+    'table.date':      'Date',
+    'override.title':  'Emergency Steering',
+    'override.subtitle': 'Manual track control — left & right motors',
+    'override.mode':   'Emergency Steering Mode',
+    'override.disabled': 'Disabled',
+    'override.active': 'ACTIVE',
+    'override.standby': 'STANDBY',
+    'override.overrideActive': 'EMERGENCY ACTIVE',
+    'override.leftTrack':  'Left Track',
+    'override.rightTrack': 'Right Track',
+    'override.idle':    'IDLE',
+    'override.forward': 'Forward',
+    'override.backward':'Backward',
+    'override.endpoint':'Endpoint',
+    'override.payload': 'Current Payload',
+    'override.lastUpdated': 'Last Updated',
+    // Field labels
+    'field.temperature': 'Temperature',
+    'field.humidity':    'Humidity',
+    'field.rainfall':    'Rainfall',
+    'field.N':           'Nitrogen',
+    'field.P':           'Phosphorus',
+    'field.K':           'Potassium',
+    'field.soilTemp':    'Soil Temp',
+    'field.moisture':    'Moisture',
+    'field.EC':          'EC',
+    'field.pH':          'pH',
+    'field.waterPH':     'Water pH',
+    'field.turbidity':   'Turbidity',
+    'field.waterTemp':   'Water Temp',
+  }
+};
+
+let currentLang = 'fil';
+
+function t(key) {
+  return LANG[currentLang][key] || LANG.en[key] || key;
+}
+
+function applyLang() {
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    el.textContent = t(el.dataset.i18n);
+  });
+  // Lang toggle label
+  if (currentLang === 'fil') {
+    document.getElementById('langLabel').innerHTML = '<span class="lang-active">FIL</span> ● EN';
+  } else {
+    document.getElementById('langLabel').innerHTML = 'FIL ● <span class="lang-active">EN</span>';
+  }
+  // Rebuild dynamic content
+  buildDashboard();
+  // Re-render active detail page if any
+  const activePage = document.querySelector('.page.active');
+  if (activePage) {
+    const name = activePage.id.replace('page-', '');
+    if (name !== 'dashboard' && name !== 'override') buildDetailPage(name);
+  }
+  // Re-apply override dynamic labels
+  const on = document.getElementById('overrideMasterToggle').checked;
+  document.getElementById('overrideMasterLabel').textContent = on ? t('override.active') : t('override.disabled');
+  document.getElementById('overrideBadge').textContent = on ? t('override.overrideActive') : t('override.standby');
+  updateTrackUI('left');
+  updateTrackUI('right');
+}
+
+function toggleLang() {
+  currentLang = currentLang === 'fil' ? 'en' : 'fil';
+  applyLang();
+}
+
+// ============================================================
+// DATA — swap this out with any source (fetch, API, etc.)
+// ============================================================
+const DATA = {
+  location: "Hermosa, Bataan, PH",
+  climate: {
+    labelKey: "nav.climate",
+    get label() { return t(this.labelKey); },
+    fields: [
+      { key: "temperature", labelKey: "field.temperature", get label(){ return t(this.labelKey); }, unit: "°C", accent: "#00e5a0", min: 0, max: 45 },
+      { key: "humidity",    labelKey: "field.humidity",    get label(){ return t(this.labelKey); }, unit: "%",  accent: "#0099ff", min: 0, max: 100 },
+      { key: "rainfall",    labelKey: "field.rainfall",    get label(){ return t(this.labelKey); }, unit: "mm", accent: "#a855f7", min: 0, max: 50 },
+    ],
+    rows: [
+      { date: "2026-02-23", temperature: 28.4, humidity: 74.5, rainfall: 2.2 },
+      { date: "2026-02-24", temperature: 28.2, humidity: 82.7, rainfall: 0.0 },
+      { date: "2026-02-25", temperature: 29.1, humidity: 79.4, rainfall: 13.0 },
+      { date: "2026-02-26", temperature: 30.2, humidity: 81.0, rainfall: 5.0 },
+      { date: "2026-02-27", temperature: 28.9, humidity: 78.1, rainfall: 10.2 },
+      { date: "2026-02-28", temperature: 28.7, humidity: 81.6, rainfall: 0.0 },
+      { date: "2026-03-01", temperature: 28.4, humidity: 83.3, rainfall: 2.5 },
+      { date: "2026-03-02", temperature: 28.5, humidity: 83.9, rainfall: 0.0 },
+      { date: "2026-03-03", temperature: 29.5, humidity: 81.6, rainfall: 1.6 },
+      { date: "2026-03-04", temperature: 29.8, humidity: 80.1, rainfall: 0.0 },
+      { date: "2026-03-05", temperature: 29.4, humidity: 77.3, rainfall: 0.0 },
+      { date: "2026-03-06", temperature: 29.0, humidity: 78.3, rainfall: 4.9 },
+      { date: "2026-03-07", temperature: 28.9, humidity: 77.4, rainfall: 0.0 },
+      { date: "2026-03-08", temperature: 29.1, humidity: 76.0, rainfall: 0.0 },
+      { date: "2026-03-09", temperature: 28.9, humidity: 79.7, rainfall: 6.1 },
+    ]
+  },
+  soil: {
+    labelKey: "nav.soil",
+    get label() { return t(this.labelKey); },
+    fields: [
+      { key: "N",        labelKey: "field.N",        get label(){ return t(this.labelKey); }, unit: "mg/kg", accent: "#00e5a0", min: 0, max: 120 },
+      { key: "P",        labelKey: "field.P",        get label(){ return t(this.labelKey); }, unit: "mg/kg", accent: "#0099ff", min: 0, max: 60 },
+      { key: "K",        labelKey: "field.K",        get label(){ return t(this.labelKey); }, unit: "mg/kg", accent: "#a855f7", min: 0, max: 120 },
+      { key: "soilTemp", labelKey: "field.soilTemp", get label(){ return t(this.labelKey); }, unit: "°C",    accent: "#ffb800", min: 20, max: 40 },
+      { key: "moisture", labelKey: "field.moisture", get label(){ return t(this.labelKey); }, unit: "%",     accent: "#00e5a0", min: 0, max: 60 },
+      { key: "EC",       labelKey: "field.EC",       get label(){ return t(this.labelKey); }, unit: "dS/m",  accent: "#ff4d6d", min: 0, max: 2 },
+      { key: "pH",       labelKey: "field.pH",       get label(){ return t(this.labelKey); }, unit: "",      accent: "#0099ff", min: 4, max: 8 },
+    ],
+    rows: [
+      { date: "2026-02-23", N: 68.5, P: 12.2, K: 62.6, soilTemp: 26.2, moisture: 30.2, EC: 0.86, pH: 6.34 },
+      { date: "2026-02-24", N: 51.3, P: 20.2, K: 80.7, soilTemp: 27.8, moisture: 22.5, EC: 0.97, pH: 6.37 },
+      { date: "2026-02-25", N: 55.3, P: 18.5, K: 53.5, soilTemp: 29.1, moisture: 31.5, EC: 1.05, pH: 6.20 },
+      { date: "2026-02-26", N: 58.3, P: 19.1, K: 75.4, soilTemp: 27.7, moisture: 40.5, EC: 0.86, pH: 6.18 },
+      { date: "2026-02-27", N: 48.7, P: 11.9, K: 49.4, soilTemp: 27.1, moisture: 30.1, EC: 0.54, pH: 6.03 },
+      { date: "2026-02-28", N: 55.0, P: 24.6, K: 63.4, soilTemp: 28.8, moisture: 27.6, EC: 1.03, pH: 6.19 },
+      { date: "2026-03-01", N: 55.0, P: 18.6, K: 58.0, soilTemp: 27.7, moisture: 26.0, EC: 1.08, pH: 6.76 },
+      { date: "2026-03-02", N: 41.0, P: 16.5, K: 84.6, soilTemp: 27.6, moisture: 26.7, EC: 0.98, pH: 6.42 },
+      { date: "2026-03-03", N: 63.1, P: 26.1, K: 87.7, soilTemp: 27.7, moisture: 30.5, EC: 0.72, pH: 6.11 },
+      { date: "2026-03-04", N: 59.8, P: 17.8, K: 66.7, soilTemp: 27.4, moisture: 26.1, EC: 0.86, pH: 6.08 },
+      { date: "2026-03-05", N: 50.0, P: 12.2, K: 78.4, soilTemp: 27.3, moisture: 39.5, EC: 0.78, pH: 5.98 },
+      { date: "2026-03-06", N: 53.6, P: 16.4, K: 68.2, soilTemp: 26.5, moisture: 30.6, EC: 0.84, pH: 6.29 },
+      { date: "2026-03-07", N: 59.0, P:  8.8, K: 75.7, soilTemp: 27.9, moisture: 32.5, EC: 1.16, pH: 6.30 },
+      { date: "2026-03-08", N: 52.9, P: 22.2, K: 62.5, soilTemp: 27.4, moisture: 39.2, EC: 1.21, pH: 5.84 },
+      { date: "2026-03-09", N: 53.1, P: 16.3, K: 52.9, soilTemp: 28.3, moisture: 39.5, EC: 1.03, pH: 6.32 },
+    ]
+  },
+  water: {
+    labelKey: "nav.water",
+    get label() { return t(this.labelKey); },
+    fields: [
+      { key: "waterPH",   labelKey: "field.waterPH",   get label(){ return t(this.labelKey); }, unit: "",    accent: "#0099ff", min: 4, max: 9 },
+      { key: "turbidity", labelKey: "field.turbidity", get label(){ return t(this.labelKey); }, unit: "NTU", accent: "#ffb800", min: 0, max: 50 },
+      { key: "waterTemp", labelKey: "field.waterTemp", get label(){ return t(this.labelKey); }, unit: "°C",  accent: "#ff4d6d", min: 20, max: 35 },
+    ],
+    rows: [
+      { date: "2026-02-23", waterPH: 6.59, turbidity:  6.7, waterTemp: 26.7 },
+      { date: "2026-02-24", waterPH: 6.57, turbidity:  8.5, waterTemp: 28.5 },
+      { date: "2026-02-25", waterPH: 6.86, turbidity:  8.8, waterTemp: 27.7 },
+      { date: "2026-02-26", waterPH: 6.29, turbidity: 27.5, waterTemp: 26.6 },
+      { date: "2026-02-27", waterPH: 6.79, turbidity: 31.1, waterTemp: 26.8 },
+      { date: "2026-02-28", waterPH: 6.17, turbidity:  4.8, waterTemp: 26.2 },
+      { date: "2026-03-01", waterPH: 6.55, turbidity:  5.0, waterTemp: 27.4 },
+      { date: "2026-03-02", waterPH: 6.54, turbidity:  6.6, waterTemp: 25.9 },
+      { date: "2026-03-03", waterPH: 6.88, turbidity: 23.9, waterTemp: 26.7 },
+      { date: "2026-03-04", waterPH: 6.60, turbidity:  3.6, waterTemp: 27.6 },
+      { date: "2026-03-05", waterPH: 6.45, turbidity:  8.7, waterTemp: 27.4 },
+      { date: "2026-03-06", waterPH: 6.94, turbidity:  9.9, waterTemp: 27.5 },
+      { date: "2026-03-07", waterPH: 7.00, turbidity: 10.6, waterTemp: 26.1 },
+      { date: "2026-03-08", waterPH: 6.43, turbidity:  6.6, waterTemp: 27.6 },
+      { date: "2026-03-09", waterPH: 6.77, turbidity: 10.1, waterTemp: 26.9 },
+    ]
+  }
+};
+
+// ============================================================
+// UTILS
+// ============================================================
+function avg(arr) { return arr.reduce((a,b)=>a+b,0)/arr.length; }
+function min(arr) { return Math.min(...arr); }
+function max(arr) { return Math.max(...arr); }
+function fmt(v, decimals = 2) { return Number(v).toFixed(decimals); }
+
+function getValues(rows, key) {
+  return rows.map(r => r[key]).filter(v => v !== undefined && v !== null);
+}
+
+function fieldInfo(section, key) {
+  return section.fields.find(f => f.key === key);
+}
+
+// ============================================================
+// DASHBOARD CARDS
+// ============================================================
+function buildDashCard(field, latest, rows) {
+  const vals = getValues(rows, field.key);
+  const v = latest[field.key];
+  const pct = Math.max(0, Math.min(100, ((v - field.min) / (field.max - field.min)) * 100));
+  const decimals = field.unit === 'mm' || field.unit === 'mg/kg' ? 1 : 2;
+
+  return `
+  <div class="metric-card" style="--card-accent:${field.accent}"
+       onclick="goDetail('${field.section}','${field.key}')">
+    <div class="metric-nav-hint">${t('stat.latest')} ›</div>
+    <div class="metric-label">${field.label}</div>
+    <div class="metric-value">${fmt(v, decimals)}</div>
+    <div class="metric-unit">${field.unit || '—'}</div>
+    <div class="metric-bar-track">
+      <div class="metric-bar-fill" style="width:${pct}%"></div>
+    </div>
+    <div class="metric-range">
+      <span>${t('stat.minimum').toLowerCase()} ${fmt(min(vals), decimals)}</span>
+      <span>${t('stat.maximum').toLowerCase()} ${fmt(max(vals), decimals)}</span>
+    </div>
+  </div>`;
+}
+
+// ============================================================
+// BATTERY CARD (fluff — no history)
+// ============================================================
+const BATTERY = {
+  health:  87,      // %
+  voltage: 12.4,    // V
+  status:  'nominal', // 'nominal' | 'charging' | 'low' | 'critical'
+};
+
+const BATTERY_STATUS_COLOR = {
+  nominal:  '#00e5a0',
+  charging: '#0099ff',
+  low:      '#ffb800',
+  critical: '#ff4d6d',
+};
+
+const BATTERY_STATUS_LABEL = {
+  nominal:  { fil: 'Normal',    en: 'Nominal'  },
+  charging: { fil: 'Nagcha-charge', en: 'Charging' },
+  low:      { fil: 'Mababa',    en: 'Low'      },
+  critical: { fil: 'Kritikal',  en: 'Critical' },
+};
+
+function buildBatteryCard(key, label, value, unit, accent, pct) {
+  return `
+  <div class="metric-card" style="--card-accent:${accent};cursor:default">
+    <div class="metric-label">${label}</div>
+    <div class="metric-value">${value}</div>
+    <div class="metric-unit">${unit}</div>
+    <div class="metric-bar-track">
+      <div class="metric-bar-fill" style="width:${pct}%"></div>
+    </div>
+    <div class="metric-range">
+      <span>&nbsp;</span>
+    </div>
+  </div>`;
+}
+
+function buildBatterySection() {
+  const statusColor = BATTERY_STATUS_COLOR[BATTERY.status] || '#00e5a0';
+  const statusLabel = (BATTERY_STATUS_LABEL[BATTERY.status] || {})[currentLang]
+                    || BATTERY_STATUS_LABEL[BATTERY.status]?.en
+                    || BATTERY.status;
+
+  const cards = [
+    buildBatteryCard('health',  t('battery.health'),  BATTERY.health,  '%', '#00e5a0', BATTERY.health),
+    buildBatteryCard('voltage', t('battery.voltage'),  BATTERY.voltage, 'V', '#0099ff',
+      Math.max(0, Math.min(100, ((BATTERY.voltage - 10) / (14.8 - 10)) * 100))),
+    buildBatteryCard('status',  t('battery.status'),   statusLabel,     '',  statusColor, 100),
+  ];
+
+  document.getElementById('dashBattery').innerHTML = cards.join('');
+}
+
+function buildDashboard() {
+  document.getElementById('navLocation').textContent = DATA.location;
+  const allSections = ['climate', 'soil', 'water'];
+  allSections.forEach(sName => {
+    const s = DATA[sName];
+    const latest = s.rows[s.rows.length - 1];
+    document.getElementById('latestDate').textContent = latest.date;
+    const container = document.getElementById('dash' + sName.charAt(0).toUpperCase() + sName.slice(1));
+    container.innerHTML = s.fields.map(f => {
+      f.section = sName;
+      return buildDashCard(f, latest, s.rows);
+    }).join('');
+  });
+  buildBatterySection();
+}
+
+// ============================================================
+// STATS ROW
+// ============================================================
+function buildStats(containerId, section, activeKey) {
+  const field = fieldInfo(section, activeKey);
+  const vals = getValues(section.rows, activeKey);
+  const mean = avg(vals);
+  const mn = min(vals);
+  const mx = max(vals);
+  const latest = section.rows[section.rows.length - 1][activeKey];
+  const d = field.unit === 'mm' || field.unit === 'mg/kg' ? 1 : 2;
+
+  document.getElementById(containerId).innerHTML = `
+    <div class="stat-box" style="--card-accent:${field.accent}">
+      <div class="stat-name">${t('stat.latest')}</div>
+      <div class="stat-value">${fmt(latest, d)} <small style="font-size:0.6rem;color:var(--text-muted)">${field.unit}</small></div>
+    </div>
+    <div class="stat-box" style="--card-accent:${field.accent}">
+      <div class="stat-name">${t('stat.average')}</div>
+      <div class="stat-value">${fmt(mean, d)}</div>
+    </div>
+    <div class="stat-box" style="--card-accent:${field.accent}">
+      <div class="stat-name">${t('stat.minimum')}</div>
+      <div class="stat-value">${fmt(mn, d)}</div>
+    </div>
+    <div class="stat-box" style="--card-accent:${field.accent}">
+      <div class="stat-name">${t('stat.maximum')}</div>
+      <div class="stat-value">${fmt(mx, d)}</div>
+    </div>
+  `;
+}
+
+// ============================================================
+// LINE CHART (pure SVG)
+// ============================================================
+function buildChart(svgId, rows, activeKey, field) {
+  const svg = document.getElementById(svgId);
+  const W = svg.parentElement.clientWidth || 800;
+  const H = 180;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+
+  const vals = getValues(rows, activeKey);
+  const mn = min(vals);
+  const mx = max(vals);
+  const pad = { top: 10, right: 20, bottom: 30, left: 50 };
+  const iW = W - pad.left - pad.right;
+  const iH = H - pad.top - pad.bottom;
+
+  const xScale = i => pad.left + (i / (vals.length - 1)) * iW;
+  const yScale = v => pad.top + iH - ((v - mn) / (mx - mn || 1)) * iH;
+
+  // Grid lines
+  let gridLines = '';
+  const ticks = 4;
+  for (let i = 0; i <= ticks; i++) {
+    const y = pad.top + (i / ticks) * iH;
+    const val = mx - (i / ticks) * (mx - mn);
+    gridLines += `
+      <line x1="${pad.left}" y1="${y}" x2="${pad.left + iW}" y2="${y}"
+        stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
+      <text x="${pad.left - 6}" y="${y + 4}" text-anchor="end"
+        fill="#5a7a94" font-size="9" font-family="Space Mono, monospace">
+        ${fmt(val, 1)}
+      </text>`;
+  }
+
+  // Area path
+  const pts = vals.map((v, i) => `${xScale(i)},${yScale(v)}`).join(' ');
+  const firstX = xScale(0), lastX = xScale(vals.length - 1);
+  const areaPath = `M ${firstX},${pad.top + iH} L ${firstX},${yScale(vals[0])} L ${pts.split(' ').slice(1).join(' ')} L ${lastX},${pad.top + iH} Z`;
+  const linePath = `M ${pts.split(' ').join(' L ')}`;
+
+  // Date labels (show ~5)
+  let dateLabels = '';
+  const step = Math.max(1, Math.floor(rows.length / 5));
+  rows.forEach((r, i) => {
+    if (i % step === 0 || i === rows.length - 1) {
+      const x = xScale(i);
+      const label = r.date.slice(5); // MM-DD
+      dateLabels += `<text x="${x}" y="${H - 4}" text-anchor="middle"
+        fill="#5a7a94" font-size="9" font-family="Space Mono, monospace">${label}</text>`;
+    }
+  });
+
+  // Dots
+  const dots = vals.map((v, i) => {
+    const isLatest = i === vals.length - 1;
+    return `<circle cx="${xScale(i)}" cy="${yScale(v)}" r="${isLatest ? 4 : 2.5}"
+      fill="${isLatest ? field.accent : 'var(--surface)'}"
+      stroke="${field.accent}" stroke-width="${isLatest ? 0 : 1.5}" opacity="${isLatest ? 1 : 0.7}"/>`;
+  }).join('');
+
+  const uid = svgId + activeKey;
+  svg.innerHTML = `
+    <defs>
+      <linearGradient id="area-${uid}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="${field.accent}" stop-opacity="0.25"/>
+        <stop offset="100%" stop-color="${field.accent}" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+    ${gridLines}
+    <path d="${areaPath}" fill="url(#area-${uid})"/>
+    <path d="${linePath}" fill="none" stroke="${field.accent}" stroke-width="1.5" stroke-linejoin="round"/>
+    ${dots}
+    ${dateLabels}
+  `;
+}
+
+// ============================================================
+// CHART SELECTOR BUTTONS
+// ============================================================
+function buildChartBtns(containerId, section, sName) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = section.fields.map((f, i) => `
+    <button class="chart-btn ${i === 0 ? 'cbtn-active' : ''}"
+      data-key="${f.key}"
+      onclick="selectChartField('${sName}', '${f.key}', this)"
+      style="
+        background: ${i === 0 ? f.accent + '22' : 'transparent'};
+        border: 1px solid ${i === 0 ? f.accent : 'var(--border)'};
+        color: ${i === 0 ? f.accent : 'var(--text-muted)'};
+        font-family: var(--font-mono);
+        font-size: 0.6rem;
+        letter-spacing: 0.1em;
+        padding: 0.3rem 0.8rem;
+        cursor: pointer;
+        transition: all 0.2s;
+        --btn-accent: ${f.accent};
+      "
+      onmouseover="this.style.borderColor='${f.accent}';this.style.color='${f.accent}'"
+      onmouseout="if(!this.classList.contains('cbtn-active')){this.style.borderColor='var(--border)';this.style.color='var(--text-muted)'}"
+    >${f.label}</button>
+  `).join('');
+}
+
+function selectChartField(sName, key, btn) {
+  const section = DATA[sName];
+  const field = fieldInfo(section, key);
+
+  // Deactivate all
+  btn.closest('[id$="ChartBtns"]').querySelectorAll('.chart-btn').forEach(b => {
+    b.classList.remove('cbtn-active');
+    b.style.background = 'transparent';
+    b.style.borderColor = 'var(--border)';
+    b.style.color = 'var(--text-muted)';
+  });
+
+  // Activate this
+  btn.classList.add('cbtn-active');
+  btn.style.background = field.accent + '22';
+  btn.style.borderColor = field.accent;
+  btn.style.color = field.accent;
+
+  const statsId = sName + 'Stats';
+  const chartId = sName + 'Chart';
+  buildStats(statsId, section, key);
+  buildChart(chartId, section.rows, key, field);
+}
+
+// ============================================================
+// TABLE
+// ============================================================
+function buildTable(tableId, section) {
+  const el = document.getElementById(tableId);
+  const d = v => (typeof v === 'number') ? fmt(v, String(v).includes('.') ? 2 : 0) : v;
+
+  el.innerHTML = `
+    <thead>
+      <tr>
+        <th>${t('table.date')}</th>
+        ${section.fields.map(f => `<th>${f.label}${f.unit ? ' (' + f.unit + ')' : ''}</th>`).join('')}
+      </tr>
+    </thead>
+    <tbody>
+      ${[...section.rows].reverse().map((row, i) => `
+        <tr class="${i === 0 ? 'latest' : ''}">
+          <td style="font-family:var(--font-mono);font-size:0.7rem">${row.date}</td>
+          ${section.fields.map(f => `
+            <td class="td-value" style="--card-accent:${f.accent}">${d(row[f.key])}</td>
+          `).join('')}
+        </tr>
+      `).join('')}
+    </tbody>
+  `;
+}
+
+// ============================================================
+// OVERRIDE CONTROL
+// ============================================================
+
+// State object — this is what GET /override returns
+const overrideState = {
+  enabled: false,
+  left:  'idle',   // 'idle' | 'fwd' | 'rev'
+  right: 'idle',
+};
+
+function getOverridePayload() {
+  return JSON.stringify({
+    override: overrideState.enabled,
+    left:  overrideState.left,
+    right: overrideState.right,
+  });
+}
+
+function onMasterToggle() {
+  const on = document.getElementById('overrideMasterToggle').checked;
+  overrideState.enabled = on;
+
+  if (!on) {
+    overrideState.left  = 'idle';
+    overrideState.right = 'idle';
+    updateTrackUI('left');
+    updateTrackUI('right');
+  }
+
+  document.getElementById('trackLeft').classList.toggle('disabled', !on);
+  document.getElementById('trackRight').classList.toggle('disabled', !on);
+  document.getElementById('overrideMasterLabel').textContent = on ? t('override.active') : t('override.disabled');
+
+  const badge = document.getElementById('overrideBadge');
+  badge.textContent = on ? t('override.overrideActive') : t('override.standby');
+  badge.classList.toggle('active', on);
+
+  const dot = document.getElementById('pollDot');
+  dot.classList.toggle('live', on);
+
+  refreshPayloadDisplay();
+}
+
+function pressBtn(side, dir, isDown) {
+  if (!overrideState.enabled) return;
+
+  if (isDown) {
+    overrideState[side] = dir;
+    document.getElementById(side === 'left' ? 'leftUp' : 'rightUp')
+      .classList.toggle('pressed', dir === 'fwd');
+    document.getElementById(side === 'left' ? 'leftDown' : 'rightDown')
+      .classList.toggle('pressed', dir === 'rev');
+  } else {
+    // Only clear if this is the active direction (prevents mouseup on wrong btn clearing state)
+    if (overrideState[side] === dir) {
+      overrideState[side] = 'idle';
+      document.getElementById(side === 'left' ? 'leftUp' : 'rightUp').classList.remove('pressed');
+      document.getElementById(side === 'left' ? 'leftDown' : 'rightDown').classList.remove('pressed');
+    }
+  }
+
+  updateTrackUI(side);
+  refreshPayloadDisplay();
+}
+
+function updateTrackUI(side) {
+  const state = overrideState[side];
+  const indicator = document.getElementById(side + 'Indicator');
+  const label     = document.getElementById(side + 'DirLabel');
+
+  indicator.className = 'track-indicator' + (state !== 'idle' ? ' ' + state : '');
+  label.className     = 'track-dir-label'  + (state !== 'idle' ? ' ' + state : '');
+  label.textContent   = state === 'fwd' ? t('override.forward').toUpperCase()
+                      : state === 'rev' ? t('override.backward').toUpperCase()
+                      : t('override.idle');
+}
+
+function refreshPayloadDisplay() {
+  const payload = getOverridePayload();
+  document.getElementById('overridePayload').textContent = payload;
+  document.getElementById('overrideTimestamp').textContent = new Date().toLocaleTimeString();
+
+  fetch('/override', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: payload,
+  }).catch(e => console.warn('[override] POST failed:', e));
+}
+
+// ============================================================
+// NAVIGATION (updated)
+// ============================================================
+let currentDetailKey = {};
+
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+
+  document.querySelectorAll('.nav-tabs button').forEach(b => b.classList.remove('active'));
+  const btns = document.querySelectorAll('.nav-tabs button');
+  const labels = ['dashboard', 'climate', 'soil', 'water', 'override'];
+  btns[labels.indexOf(name)]?.classList.add('active');
+
+  if (name !== 'dashboard' && name !== 'override') {
+    buildDetailPage(name);
+  }
+}
+
+function buildDetailPage(sName) {
+  const section = DATA[sName];
+  const firstKey = section.fields[0].key;
+  const firstField = section.fields[0];
+
+  buildChartBtns(sName + 'ChartBtns', section, sName);
+  buildStats(sName + 'Stats', section, firstKey);
+  buildChart(sName + 'Chart', section.rows, firstKey, firstField);
+  buildTable(sName + 'Table', section);
+
+  document.getElementById(sName + 'Stats').style.setProperty('--card-accent', firstField.accent);
+}
+
+function goDetail(sName, key) {
+  showPage(sName);
+  setTimeout(() => {
+    const section = DATA[sName];
+    const field = fieldInfo(section, key);
+    const btn = document.querySelector(`#${sName}ChartBtns [data-key="${key}"]`);
+    if (btn) selectChartField(sName, key, btn);
+  }, 50);
+}
+
+// ============================================================
+// MIN/MAX RANGE TOGGLE
+// ============================================================
+let rangeVisible = false;
+
+function toggleRange() {
+  rangeVisible = !rangeVisible;
+  document.body.classList.toggle('show-range', rangeVisible);
+  const btn = document.getElementById('rangeToggleBtn');
+  btn.classList.toggle('active', rangeVisible);
+  document.getElementById('rangeToggleIcon').textContent = rangeVisible ? '●' : '○';
+}
+
+// ============================================================
+// INIT
+// ============================================================
+applyLang();
+refreshPayloadDisplay();
+</script>
+</body>
+</html>
